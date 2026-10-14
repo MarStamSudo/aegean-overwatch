@@ -1,5 +1,6 @@
 import sqlite3
 
+from analysis import classify, emergency_reason
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -35,7 +36,7 @@ def health():
 @app.get("/api/aircraft/latest")
 def latest_positions(seconds: int = 120):
     """Latest known position of every aircraft seen in the last N seconds (one row per aircraft)."""
-    return query("""
+    rows = query("""
         SELECT *
         FROM positions
         WHERE id IN (
@@ -46,6 +47,11 @@ def latest_positions(seconds: int = 120):
         )
         ORDER BY icao
     """, (seconds,))
+
+    for row in rows:
+        row["tags"] = classify(row)
+        row["emergency_reason"] = emergency_reason(row)
+    return rows
 
 
 @app.get("/api/aircraft/{icao}/track")

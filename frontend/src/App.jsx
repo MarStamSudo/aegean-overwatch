@@ -5,6 +5,13 @@ import "leaflet/dist/leaflet.css";
 const API_URL = "http://127.0.0.1:8000";
 const REFRESH_MS = 15000;
 
+// Marker color by priority: emergency > military > normal
+function markerColor(a) {
+  if (a.tags?.includes("emergency")) return "#ef4444"; // red
+  if (a.tags?.includes("military")) return "#f97316";  // orange
+  return "#22c55e";                                     // green
+}
+
 // Listens for clicks on the empty map and reports them
 function MapClickHandler({ onMapClick }) {
   useMapEvents({ click: onMapClick });
@@ -44,11 +51,16 @@ export default function App() {
       .catch(() => setTrack([]));
   }, [selected, aircraft]);
 
+  const militaryCount = aircraft.filter((a) => a.tags?.includes("military")).length;
+  const emergencyCount = aircraft.filter((a) => a.tags?.includes("emergency")).length;
+
   return (
     <div className="app">
       <header className="topbar">
         AEGEAN OVERWATCH
-        <span>{aircraft.length} aircraft</span>
+        <span>
+          {aircraft.length} aircraft · {militaryCount} military · {emergencyCount} emergency
+        </span>
       </header>
 
       <MapContainer center={[38.5, 25.0]} zoom={7} className="map">
@@ -65,18 +77,20 @@ export default function App() {
         {aircraft.map((a) => {
           const isSelected = a.icao === selected;
           return (
-              <CircleMarker
+            <CircleMarker
               key={a.icao}
               center={[a.lat, a.lon]}
               radius={isSelected ? 7 : 5}
               bubblingMouseEvents={false}
-              pathOptions={{ color: isSelected ? "#facc15" : "#22c55e", fillOpacity: 0.9 }}
+              pathOptions={{ color: isSelected ? "#facc15" : markerColor(a), fillOpacity: 0.9 }}
               eventHandlers={{ click: () => setSelected(a.icao) }}
             >
               <Popup>
                 <strong>{a.flight || "-"}</strong> ({a.icao})<br />
                 Altitude: {a.on_ground ? "ground" : `${a.alt_baro ?? "-"} ft`}<br />
                 Speed: {a.gs != null ? `${Math.round(a.gs)} kt` : "-"}
+                {a.tags?.includes("military") && (<><br /><strong>Military aircraft</strong></>)}
+                {a.emergency_reason && (<><br /><strong>Squawk {a.squawk}: {a.emergency_reason}</strong></>)}
               </Popup>
             </CircleMarker>
           );
