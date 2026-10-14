@@ -8,34 +8,56 @@ HEADERS = {"User-Agent": "aegean-overwatch/0.1 (+https://github.com/MarStamSudo/
 URL = "https://api.adsb.lol/v2/point/38.3/25.0/250"
 GEOJSON_PATH = Path(__file__).parent.parent / "data" / "aegean.geojson"
 
-# 1. Load the Aegean polygon (once, before the request)
-with open(GEOJSON_PATH, encoding="utf-8") as f:
-    aegean = shape(json.load(f)["features"][0]["geometry"])
 
-# 2. Fetch aircraft
-response = httpx.get(URL, headers=HEADERS, timeout=10)
-response.raise_for_status()
-aircraft_list = response.json().get("ac", [])
+def load_polygon(path):
+    """Read the GeoJSON file and return a shapely polygon."""
+    with open(path, encoding="utf-8") as f:          
+        data = json.load(f)
+    return shape(data["features"][0]["geometry"])
 
-# 3. Filter and print
-with_position = 0
-inside = 0
 
-for aircraft in aircraft_list:
-    lat = aircraft.get("lat")
-    lon = aircraft.get("lon")
-    if lat is None or lon is None:
-        continue
-    with_position += 1
+def fetch_aircraft():
+    """Call the API and return the list of aircraft (list of dicts)."""
+    response = httpx.get(URL, headers=HEADERS, timeout=10)   
+    response.raise_for_status()
+    return response.json().get("ac", [])
 
-    if not aegean.contains(Point(lon, lat)):
-        continue
-    inside += 1
 
-    icao = aircraft.get("hex")
+def filter_aegean(aircraft_list, polygon):
+    """Return only aircraft that have a position and are inside the polygon."""
+    result = []
+    for aircraft in aircraft_list:                   
+        lat = aircraft.get("lat")
+        lon = aircraft.get("lon")
+        if lat is None or lon is None:
+            continue
+        if not polygon.contains(Point(lon, lat)):
+            continue
+        result.append(aircraft)
+    return result
+
+
+def format_aircraft(aircraft):
+    """Return one readable line describing an aircraft."""
+    icao = aircraft.get("hex")                       
     flight = (aircraft.get("flight") or "").strip() or "-"
     alt_baro = aircraft.get("alt_baro")
-    print(f"{icao}  {flight:<8}  {alt_baro:>6}  {lat:.3f}, {lon:.3f}")
+    alt_text = "-" if alt_baro is None else str(alt_baro)
+    lat = aircraft["lat"]
+    lon = aircraft["lon"]
+    return f"{icao}  {flight:<8}  {alt_text:>6}  {lat:.3f}, {lon:.3f}"
 
-# 4. Summary
-print(f"Aircraft found: {len(aircraft_list)} | with position: {with_position} | inside Aegean: {inside}")
+
+def main():
+    aegean = load_polygon(GEOJSON_PATH)
+    aircraft_list = fetch_aircraft()
+    inside = filter_aegean(aircraft_list, aegean)
+
+    for aircraft in inside:
+        print(format_aircraft(aircraft))
+
+    print(f"Aircraft found: {len(aircraft_list)} | inside Aegean: {len(inside)}")
+
+
+if __name__ == "__main__":
+    main()
