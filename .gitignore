@@ -216,5 +216,8 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
+# Local database
+*.db
+
 # Streamlit
 .streamlit/secrets.toml
