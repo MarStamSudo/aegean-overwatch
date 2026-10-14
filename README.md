@@ -73,8 +73,10 @@ python backend/ingest/test_polygon.py   # verify the polygon (Naxos inside, Izmi
 
 - [x] Live ADS-B ingestion from a public API
 - [x] Aegean geofencing with point-in-polygon
-- [ ] Continuous polling and storage of track history (PostgreSQL + PostGIS)
-- [ ] Interactive map (React + MapLibre)
+- [x] Continuous polling and storage of track history (PostgreSQL + PostGIS)
+- [x] Interactive map (React + MapLibre)
+- [x] Multi-source data fusion (adsb.lol, airplanes.live, adsb.fi)
+- [x] SQLite storage, read API (FastAPI) and live map (React + Leaflet)
 - [ ] Behavioral anomaly detection — loitering / orbit patterns, emergency squawks (7500/7600/7700), military-registered aircraft
 - [ ] GNSS interference mapping from ADS-B navigation integrity fields (NIC / NACp)
 - [ ] Alerts
@@ -98,6 +100,8 @@ python backend/ingest/test_polygon.py   # verify the polygon (Naxos inside, Izmi
 ## Data sources & attribution
 
 - Aircraft data provided by **[adsb.lol](https://adsb.lol)**, made available under the **[Open Database License (ODbL)](https://opendatacommons.org/licenses/odbl/)**.
+- Aircraft data provided by **[airplanes.live](https://airplanes.live)** (non-commercial use).
+- Aircraft data provided by **[adsb.fi](https://adsb.fi)** (non-commercial use).
 
 ## License
 
