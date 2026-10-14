@@ -52,13 +52,20 @@ def format_aircraft(aircraft):
 
 def main():
     aegean = load_polygon(GEOJSON_PATH)
+    conn = db.connect()
+    db.init_db(conn)
+
     aircraft_list = fetch_aircraft()
     inside = filter_aegean(aircraft_list, aegean)
 
     for aircraft in inside:
         print(format_aircraft(aircraft))
 
-    print(f"Aircraft found: {len(aircraft_list)} | inside Aegean: {len(inside)}")
+    ts = int(time.time())
+    written = db.insert_positions(conn, inside, ts)
+
+    print(f"Aircraft found: {len(aircraft_list)} | inside Aegean: {len(inside)} | saved: {written}")
+    conn.close()
 
 
 if __name__ == "__main__":
