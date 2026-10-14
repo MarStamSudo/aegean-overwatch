@@ -34,18 +34,17 @@ def health():
 
 @app.get("/api/aircraft/latest")
 def latest_positions(seconds: int = 120):
-    """Latest known position of every aircraft seen in the last N seconds."""
+    """Latest known position of every aircraft seen in the last N seconds (one row per aircraft)."""
     return query("""
-        SELECT p.*
-        FROM positions p
-        JOIN (
-            SELECT icao, MAX(ts) AS max_ts
+        SELECT *
+        FROM positions
+        WHERE id IN (
+            SELECT MAX(id)
             FROM positions
             WHERE ts >= strftime('%s', 'now') - ?
             GROUP BY icao
-        ) last
-        ON p.icao = last.icao AND p.ts = last.max_ts
-        ORDER BY p.icao
+        )
+        ORDER BY icao
     """, (seconds,))
 
 
