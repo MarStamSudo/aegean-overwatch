@@ -1,9 +1,15 @@
 import { useEffect, useState } from "react";
-import { MapContainer, TileLayer, CircleMarker, Popup, Polyline } from "react-leaflet";
+import { MapContainer, TileLayer, CircleMarker, Popup, Polyline, useMapEvents } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 
 const API_URL = "http://127.0.0.1:8000";
 const REFRESH_MS = 15000;
+
+// Listens for clicks on the empty map and reports them
+function MapClickHandler({ onMapClick }) {
+  useMapEvents({ click: onMapClick });
+  return null;
+}
 
 export default function App() {
   const [aircraft, setAircraft] = useState([]);
@@ -50,6 +56,7 @@ export default function App() {
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
+        <MapClickHandler onMapClick={() => setSelected(null)} />
 
         {track.length > 1 && (
           <Polyline positions={track} pathOptions={{ color: "#38bdf8", weight: 2 }} />
@@ -58,10 +65,11 @@ export default function App() {
         {aircraft.map((a) => {
           const isSelected = a.icao === selected;
           return (
-            <CircleMarker
+              <CircleMarker
               key={a.icao}
               center={[a.lat, a.lon]}
               radius={isSelected ? 7 : 5}
+              bubblingMouseEvents={false}
               pathOptions={{ color: isSelected ? "#facc15" : "#22c55e", fillOpacity: 0.9 }}
               eventHandlers={{ click: () => setSelected(a.icao) }}
             >
