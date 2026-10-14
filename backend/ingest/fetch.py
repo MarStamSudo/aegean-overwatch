@@ -9,6 +9,7 @@ from shapely.geometry import shape, Point
 HEADERS = {"User-Agent": "aegean-overwatch/0.1 (+https://github.com/MarStamSudo/aegean-overwatch)"}
 URL = "https://api.adsb.lol/v2/point/38.3/25.0/250"
 GEOJSON_PATH = Path(__file__).parent.parent / "data" / "aegean.geojson"
+POLL_INTERVAL = 15
 
 
 def load_polygon(path):
@@ -54,18 +55,24 @@ def main():
     aegean = load_polygon(GEOJSON_PATH)
     conn = db.connect()
     db.init_db(conn)
+    print(f"Aegean Overwatch started. Polling every {POLL_INTERVAL}s. Press Ctrl+C to stop.")
 
-    aircraft_list = fetch_aircraft()
-    inside = filter_aegean(aircraft_list, aegean)
+    try:
+        while True:
+            now = time.strftime("%H:%M:%S")
+            try:
+                aircraft_list = fetch_aircraft()
+                inside = filter_aegean(aircraft_list, aegean)
+                written = db.insert_positions(conn, inside, int(time.time()))
+                print(f"[{now}] found: {len(aircraft_list)} | inside Aegean: {len(inside)} | saved: {written}")
+            except httpx.HTTPError as error:
+                print(f"[{now}] request failed, will retry: {error}")
 
-    for aircraft in inside:
-        print(format_aircraft(aircraft))
-
-    ts = int(time.time())
-    written = db.insert_positions(conn, inside, ts)
-
-    print(f"Aircraft found: {len(aircraft_list)} | inside Aegean: {len(inside)} | saved: {written}")
-    conn.close()
+            time.sleep(POLL_INTERVAL)
+    except KeyboardInterrupt:
+        print("\nStopped by user.")
+    finally:
+        conn.close()
 
 
 if __name__ == "__main__":
