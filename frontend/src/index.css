@@ -1,0 +1,41 @@
+html, body, #root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: system-ui, sans-serif;
+  background: #0b0f14;
+  color: #e5e7eb;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: #111827;
+  border-bottom: 1px solid #1f2937;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+}
+
+.topbar span {
+  font-weight: 400;
+  letter-spacing: 0;
+  color: #9ca3af;
+}
+
+.map {
+  flex: 1;
+}
+
+/* Dark map: invert the light OpenStreetMap tiles */
+.leaflet-tile-pane {
+  filter: invert(1) hue-rotate(180deg) brightness(0.9) contrast(0.9);
+}
