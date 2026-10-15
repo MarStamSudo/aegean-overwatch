@@ -18,7 +18,7 @@ function markerColor(a) {
 }
 
 // Split a track into colored pieces: blue where GPS is OK, red where it is degraded.
-// Also break the line when there is a long gap in the data (e.g. two separate flights).
+// Also break the line when there is a long gap in the data.
 function buildSegments(points) {
   const segments = [];
   let current = null;
@@ -28,7 +28,7 @@ function buildSegments(points) {
     const p = points[i];
 
     if (p.ts - prev.ts > MAX_GAP_S) {
-      current = null; // gap: start a new line later
+      current = null;
       continue;
     }
 
@@ -50,13 +50,17 @@ function formatTime(ts) {
   });
 }
 
+function flightKey(f) {
+  return `${f.icao}-${f.start}`;
+}
+
 // Listens for clicks on the empty map and reports them
 function MapClickHandler({ onMapClick }) {
   useMapEvents({ click: onMapClick });
   return null;
 }
 
-// Zooms the map to a track, once per aircraft (only when that aircraft's data has arrived)
+// Zooms the map to a track, once per track (only when that track's data has arrived)
 function FitToTrack({ points, fitKey }) {
   const map = useMap();
   const fitted = useRef(null);
@@ -78,20 +82,22 @@ function ResizeOnChange({ trigger }) {
   return null;
 }
 
-function HistoryPanel({ selected, onSelect, hours, onHoursChange }) {
+function HistoryPanel({ selectedFlight, onSelect, hours, onHoursChange }) {
   const [q, setQ] = useState("");
-  const [results, setResults] = useState([]);
+  const [flights, setFlights] = useState([]);
 
   // Search 300 ms after the user stops typing (debounce)
   useEffect(() => {
     const id = setTimeout(() => {
-      fetch(`${API_URL}/api/history/aircraft?hours=${hours}&q=${encodeURIComponent(q)}`)
+      fetch(`${API_URL}/api/history/flights?hours=${hours}&q=${encodeURIComponent(q)}`)
         .then((res) => (res.ok ? res.json() : []))
-        .then(setResults)
-        .catch(() => setResults([]));
+        .then(setFlights)
+        .catch(() => setFlights([]));
     }, 300);
     return () => clearTimeout(id);
   }, [q, hours]);
+
+  const selectedKey = selectedFlight ? flightKey(selectedFlight) : null;
 
   return (
     <aside className="panel">
@@ -113,27 +119,27 @@ function HistoryPanel({ selected, onSelect, hours, onHoursChange }) {
         <span><i style={{ background: COLOR_GPS_BAD }} />GPS degraded (NIC &lt; {LOW_NIC})</span>
       </div>
 
+      <div className="small">{flights.length} flights</div>
+
       <ul className="results">
-        {results.map((r) => {
-          const lowPct = Math.round((100 * r.low_nic) / r.positions);
+        {flights.map((f) => {
+          const key = flightKey(f);
+          const lowPct = Math.round((100 * f.low_nic) / f.positions);
+          const minutes = Math.max(1, Math.round((f.end - f.start) / 60));
           return (
-            <li
-              key={r.icao}
-              className={r.icao === selected ? "active" : ""}
-              onClick={() => onSelect(r.icao)}
-            >
+            <li key={key} className={key === selectedKey ? "active" : ""} onClick={() => onSelect(f)}>
               <div className="row">
-                <strong>{r.flight || "-"}</strong>
-                <span>{r.icao}</span>
+                <strong>{f.flight || "-"}</strong>
+                <span>{f.icao}</span>
               </div>
               <div className="row small">
-                <span>{formatTime(r.first_seen)} – {formatTime(r.last_seen)}</span>
+                <span>{formatTime(f.start)} – {formatTime(f.end)} ({minutes} min)</span>
                 <span className={lowPct > 0 ? "bad" : ""}>{lowPct}% low NIC</span>
               </div>
             </li>
           );
         })}
-        {results.length === 0 && <li className="empty">No aircraft found</li>}
+        {flights.length === 0 && <li className="empty">No flights found</li>}
       </ul>
     </aside>
   );
@@ -142,8 +148,9 @@ function HistoryPanel({ selected, onSelect, hours, onHoursChange }) {
 export default function App() {
   const [mode, setMode] = useState("live"); // "live" or "history"
   const [aircraft, setAircraft] = useState([]);
-  const [selected, setSelected] = useState(null);
-  const [track, setTrack] = useState({ icao: null, points: [] }); // the track always knows whose it is
+  const [selected, setSelected] = useState(null);             // live: selected aircraft (icao)
+  const [selectedFlight, setSelectedFlight] = useState(null); // history: selected flight
+  const [track, setTrack] = useState({ key: null, points: [] });
   const [hours, setHours] = useState(24);
 
   // Live: load the latest positions now, then every 15 seconds
@@ -162,32 +169,44 @@ export default function App() {
     return () => clearInterval(id);
   }, []);
 
-  // Load the track of the selected aircraft (last hour in live mode, longer in history mode)
+  // Which track to show: one flight (history) or the last hour of an aircraft (live)
+  let trackKey = null;
+  let trackUrl = null;
+  if (mode === "history" && selectedFlight) {
+    trackKey = flightKey(selectedFlight);
+    trackUrl = `${API_URL}/api/aircraft/${selectedFlight.icao}/track?start=${selectedFlight.start}&end=${selectedFlight.end}`;
+  } else if (mode === "live" && selected) {
+    trackKey = selected;
+    trackUrl = `${API_URL}/api/aircraft/${selected}/track?minutes=60`;
+  }
+
+  // Load the track (and refresh it in live mode as new data arrives)
+  const liveTick = mode === "live" ? aircraft : null;
   useEffect(() => {
-    if (!selected) {
-      setTrack({ icao: null, points: [] });
+    if (!trackUrl) {
+      setTrack({ key: null, points: [] });
       return;
     }
     let cancelled = false; // becomes true if the selection changes before the answer arrives
-    const minutes = mode === "history" ? hours * 60 : 60;
 
-    fetch(`${API_URL}/api/aircraft/${selected}/track?minutes=${minutes}`)
+    fetch(trackUrl)
       .then((res) => (res.ok ? res.json() : []))
       .then((rows) => {
-        if (!cancelled) setTrack({ icao: selected, points: rows });
+        if (!cancelled) setTrack({ key: trackKey, points: rows });
       })
       .catch(() => {
-        if (!cancelled) setTrack({ icao: selected, points: [] });
+        if (!cancelled) setTrack({ key: trackKey, points: [] });
       });
 
     return () => {
       cancelled = true;
     };
-  }, [selected, mode, hours, aircraft]);
+  }, [trackKey, trackUrl, liveTick]);
 
   function switchMode(newMode) {
     setMode(newMode);
     setSelected(null);
+    setSelectedFlight(null);
   }
 
   const segments = buildSegments(track.points);
@@ -215,8 +234,8 @@ export default function App() {
       <div className="content">
         {mode === "history" && (
           <HistoryPanel
-            selected={selected}
-            onSelect={setSelected}
+            selectedFlight={selectedFlight}
+            onSelect={setSelectedFlight}
             hours={hours}
             onHoursChange={setHours}
           />
@@ -229,7 +248,7 @@ export default function App() {
           />
           <ResizeOnChange trigger={mode} />
           {mode === "live" && <MapClickHandler onMapClick={() => setSelected(null)} />}
-          {mode === "history" && <FitToTrack points={track.points} fitKey={track.icao} />}
+          {mode === "history" && <FitToTrack points={track.points} fitKey={track.key} />}
 
           {segments.map((s, i) => (
             <Polyline key={i} positions={s.positions} pathOptions={{ color: s.color, weight: 3 }} />

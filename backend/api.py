@@ -1,10 +1,10 @@
 import sqlite3
+from itertools import groupby
 
-from analysis import classify, emergency_reason
-from analysis import LOW_NIC, classify
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
+from analysis import classify, emergency_reason, split_flights, summarize_flight
 from ingest.db import DB_PATH
 
 app = FastAPI(title="Aegean Overwatch API")
@@ -56,35 +56,47 @@ def latest_positions(seconds: int = 120):
 
 
 @app.get("/api/aircraft/{icao}/track")
-def aircraft_track(icao: str, minutes: int = 60):
-    """All positions of one aircraft in the last N minutes, oldest first."""
-    rows = query("""
-        SELECT ts, lat, lon, alt_baro, gs, track, nic, nac_p
-        FROM positions
-        WHERE icao = ? AND ts >= strftime('%s', 'now') - ? * 60
-        ORDER BY ts
-    """, (icao.lower(), minutes))
+def aircraft_track(icao: str, minutes: int = 60, start: int | None = None, end: int | None = None):
+    """Positions of one aircraft, oldest first.
+    With start/end (unix seconds): exactly that time window (one flight).
+    Otherwise: the last N minutes."""
+    if start is not None and end is not None:
+        rows = query("""
+            SELECT ts, lat, lon, alt_baro, gs, track, nic, nac_p
+            FROM positions
+            WHERE icao = ? AND ts BETWEEN ? AND ?
+            ORDER BY ts
+        """, (icao.lower(), start, end))
+    else:
+        rows = query("""
+            SELECT ts, lat, lon, alt_baro, gs, track, nic, nac_p
+            FROM positions
+            WHERE icao = ? AND ts >= strftime('%s', 'now') - ? * 60
+            ORDER BY ts
+        """, (icao.lower(), minutes))
+
     if not rows:
         raise HTTPException(status_code=404, detail="No positions for this aircraft")
     return rows
 
-# aircraft history
-@app.get("/api/history/aircraft")
-def history_aircraft(hours: int = 24, q: str = ""):
-    """Aircraft seen in the last N hours, most GNSS-degraded first.
+
+@app.get("/api/history/flights")
+def history_flights(hours: int = 24, q: str = ""):
+    """Flights seen in the last N hours, most GNSS-degraded first.
     Optional search by callsign or ICAO (partial match)."""
     q = q.strip()
-    return query("""
-        SELECT icao,
-               MAX(flight)   AS flight,
-               COUNT(*)      AS positions,
-               SUM(nic < ?)  AS low_nic,
-               MIN(ts)       AS first_seen,
-               MAX(ts)       AS last_seen
+    rows = query("""
+        SELECT icao, flight, ts, nic
         FROM positions
         WHERE ts >= strftime('%s', 'now') - ? * 3600
           AND (? = '' OR icao LIKE ? OR flight LIKE ?)
-        GROUP BY icao
-        ORDER BY low_nic DESC, last_seen DESC
-        LIMIT 100
-    """, (LOW_NIC, hours, q, f"%{q.lower()}%", f"%{q.upper()}%"))
+        ORDER BY icao, ts
+    """, (hours, q, f"%{q.lower()}%", f"%{q.upper()}%"))
+
+    flights = []
+    for icao, points in groupby(rows, key=lambda row: row["icao"]):
+        for flight_points in split_flights(list(points)):
+            flights.append(summarize_flight(icao, flight_points))
+
+    flights.sort(key=lambda f: (f["low_nic"], f["end"]), reverse=True)
+    return flights[:200]
