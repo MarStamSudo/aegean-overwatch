@@ -1,5 +1,4 @@
-from analysis import classify, emergency_reason, split_flights, summarize_flight
-
+from analysis import classify, detect_loiters, emergency_reason, split_flights, summarize_flight, turn_angle
 
 def test_normal_aircraft_has_no_tags():
     aircraft = {"db_flags": 0, "squawk": "1234"}
@@ -90,3 +89,49 @@ def test_summarize_flight():
         "positions": 3,
         "low_nic": 2,
     }
+
+    # --- Loitering ---
+
+def tp(ts, track):
+    """Helper: a fake position with a heading."""
+    return {"ts": ts, "track": track, "lat": 38.0, "lon": 25.0}
+
+
+def test_turn_angle_simple():
+    assert turn_angle(90, 120) == 30    # right
+    assert turn_angle(120, 90) == -30   # left
+
+
+def test_turn_angle_wraps_around_north():
+    assert turn_angle(350, 10) == 20    # 20 right, NOT 340 left
+    assert turn_angle(10, 350) == -20
+
+
+def test_straight_flight_is_not_loiter():
+    points = [tp(i * 15, 90) for i in range(80)]  # 20 minutes heading east
+    assert detect_loiters(points) == []
+
+
+def test_full_circle_is_loiter():
+    # turning 30 degrees right every 15 s: 13 turns = 390 degrees in ~3 minutes
+    points = [tp(i * 15, (i * 30) % 360) for i in range(14)]
+    events = detect_loiters(points)
+    assert len(events) == 1
+    assert events[0]["turn_deg"] == 390
+
+
+def test_zigzag_is_not_loiter():
+    # right 60, left 60, right 60... the turns cancel out
+    points = [tp(i * 15, 60 if i % 2 == 0 else 120) for i in range(80)]
+    assert detect_loiters(points) == []
+
+
+def test_slow_turn_outside_window_is_not_loiter():
+    # 30 degrees every 2 minutes: only 300 degrees fit in any 20-minute window
+    points = [tp(i * 120, (i * 30) % 360) for i in range(20)]
+    assert detect_loiters(points) == []
+
+
+def test_missing_track_does_not_crash():
+    points = [{"ts": i * 15, "track": None, "lat": 38.0, "lon": 25.0} for i in range(10)]
+    assert detect_loiters(points) == []
