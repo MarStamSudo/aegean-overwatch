@@ -45,7 +45,7 @@ function buildSegments(points) {
 }
 
 function formatTime(ts) {
-  return new Date(ts * 1000).toLocaleString("el-GR", {
+  return new Date(ts * 1000).toLocaleString("en-GB", {
     day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
   });
 }
@@ -56,12 +56,12 @@ function MapClickHandler({ onMapClick }) {
   return null;
 }
 
-// Zooms the map to a track, once per selected aircraft
+// Zooms the map to a track, once per aircraft (only when that aircraft's data has arrived)
 function FitToTrack({ points, fitKey }) {
   const map = useMap();
   const fitted = useRef(null);
   useEffect(() => {
-    if (points.length > 1 && fitted.current !== fitKey) {
+    if (fitKey && points.length > 1 && fitted.current !== fitKey) {
       map.fitBounds(points.map((p) => [p.lat, p.lon]), { padding: [40, 40] });
       fitted.current = fitKey;
     }
@@ -143,7 +143,7 @@ export default function App() {
   const [mode, setMode] = useState("live"); // "live" or "history"
   const [aircraft, setAircraft] = useState([]);
   const [selected, setSelected] = useState(null);
-  const [track, setTrack] = useState([]);
+  const [track, setTrack] = useState({ icao: null, points: [] }); // the track always knows whose it is
   const [hours, setHours] = useState(24);
 
   // Live: load the latest positions now, then every 15 seconds
@@ -165,14 +165,24 @@ export default function App() {
   // Load the track of the selected aircraft (last hour in live mode, longer in history mode)
   useEffect(() => {
     if (!selected) {
-      setTrack([]);
+      setTrack({ icao: null, points: [] });
       return;
     }
+    let cancelled = false; // becomes true if the selection changes before the answer arrives
     const minutes = mode === "history" ? hours * 60 : 60;
+
     fetch(`${API_URL}/api/aircraft/${selected}/track?minutes=${minutes}`)
       .then((res) => (res.ok ? res.json() : []))
-      .then(setTrack)
-      .catch(() => setTrack([]));
+      .then((rows) => {
+        if (!cancelled) setTrack({ icao: selected, points: rows });
+      })
+      .catch(() => {
+        if (!cancelled) setTrack({ icao: selected, points: [] });
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [selected, mode, hours, aircraft]);
 
   function switchMode(newMode) {
@@ -180,8 +190,8 @@ export default function App() {
     setSelected(null);
   }
 
-  const segments = buildSegments(track);
-  const lastPoint = track.length > 0 ? track[track.length - 1] : null;
+  const segments = buildSegments(track.points);
+  const lastPoint = track.points.length > 0 ? track.points[track.points.length - 1] : null;
   const militaryCount = aircraft.filter((a) => a.tags?.includes("military")).length;
   const emergencyCount = aircraft.filter((a) => a.tags?.includes("emergency")).length;
 
@@ -219,7 +229,7 @@ export default function App() {
           />
           <ResizeOnChange trigger={mode} />
           {mode === "live" && <MapClickHandler onMapClick={() => setSelected(null)} />}
-          {mode === "history" && <FitToTrack points={track} fitKey={selected} />}
+          {mode === "history" && <FitToTrack points={track.points} fitKey={track.icao} />}
 
           {segments.map((s, i) => (
             <Polyline key={i} positions={s.positions} pathOptions={{ color: s.color, weight: 3 }} />
