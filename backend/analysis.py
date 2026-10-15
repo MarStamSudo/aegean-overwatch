@@ -3,6 +3,9 @@
 # readsb dbFlags is a bit field: each bit is a yes/no flag
 FLAG_MILITARY = 1
 
+# NIC below this value = degraded GNSS position integrity
+LOW_NIC = 7
+
 EMERGENCY_SQUAWKS = {
     "7500": "hijack",
     "7600": "radio failure",
