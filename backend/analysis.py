@@ -1,5 +1,6 @@
 """Rules and analysis on aircraft data: tags, flights, GNSS quality."""
 
+from itertools import groupby
 
 # readsb dbFlags is a bit field: each bit is a yes/no flag
 FLAG_MILITARY = 1
@@ -141,5 +142,27 @@ def detect_loiters(points, window_s=LOITER_WINDOW_S, min_turn=LOITER_MIN_TURN):
             "lat": sum(p["lat"] for p in segment) / len(segment),
             "lon": sum(p["lon"] for p in segment) / len(segment),
         })
+    return events
+
+def find_loiter_events(rows):
+    """Find orbits in the positions of MANY aircraft (rows sorted by icao, ts).
+
+    Each event also carries its aircraft, callsign and the start/end of the
+    whole flight it belongs to, so the map can show the full flight.
+    Newest events first.
+    """
+    events = []
+    for icao, points in groupby(rows, key=lambda r: r["icao"]):
+        for flight in split_flights(list(points)):
+            callsign = next((p["flight"] for p in flight if p.get("flight")), None)
+            for event in detect_loiters(flight):
+                events.append({
+                    **event,
+                    "icao": icao,
+                    "flight": callsign,
+                    "flight_start": flight[0]["ts"],
+                    "flight_end": flight[-1]["ts"],
+                })
+    events.sort(key=lambda e: e["start"], reverse=True)
     return events
 

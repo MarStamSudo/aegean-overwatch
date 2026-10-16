@@ -9,6 +9,7 @@ const MAX_GAP_S = 600;  // break the track line if there is no data for 10 minut
 
 const COLOR_GPS_OK = "#38bdf8";
 const COLOR_GPS_BAD = "#ef4444";
+const COLOR_ORBIT = "#a855f7";
 
 // Marker color by priority: emergency > military > normal
 function markerColor(a) {
@@ -50,6 +51,10 @@ function formatTime(ts) {
   });
 }
 
+function minutesBetween(start, end) {
+  return Math.max(1, Math.round((end - start) / 60));
+}
+
 function flightKey(f) {
   return `${f.icao}-${f.start}`;
 }
@@ -60,7 +65,7 @@ function MapClickHandler({ onMapClick }) {
   return null;
 }
 
-// Zooms the map to a track, once per track (only when that track's data has arrived)
+// Zooms the map to a set of points, once per fitKey (only when the data has arrived)
 function FitToTrack({ points, fitKey }) {
   const map = useMap();
   const fitted = useRef(null);
@@ -83,11 +88,14 @@ function ResizeOnChange({ trigger }) {
 }
 
 function HistoryPanel({ selectedFlight, onSelect, hours, onHoursChange }) {
+  const [view, setView] = useState("flights"); // "flights" or "orbits"
   const [q, setQ] = useState("");
   const [flights, setFlights] = useState([]);
+  const [orbits, setOrbits] = useState([]);
 
-  // Search 300 ms after the user stops typing (debounce)
+  // Flights: search 300 ms after the user stops typing (debounce)
   useEffect(() => {
+    if (view !== "flights") return;
     const id = setTimeout(() => {
       fetch(`${API_URL}/api/history/flights?hours=${hours}&q=${encodeURIComponent(q)}`)
         .then((res) => (res.ok ? res.json() : []))
@@ -95,18 +103,36 @@ function HistoryPanel({ selectedFlight, onSelect, hours, onHoursChange }) {
         .catch(() => setFlights([]));
     }, 300);
     return () => clearTimeout(id);
-  }, [q, hours]);
+  }, [q, hours, view]);
 
-  const selectedKey = selectedFlight ? flightKey(selectedFlight) : null;
+  // Orbits
+  useEffect(() => {
+    if (view !== "orbits") return;
+    fetch(`${API_URL}/api/history/loiters?hours=${hours}`)
+      .then((res) => (res.ok ? res.json() : []))
+      .then(setOrbits)
+      .catch(() => setOrbits([]));
+  }, [hours, view]);
+
+  const isOrbitSelected = selectedFlight?.orbitStart != null;
+  const selectedFlightKey = selectedFlight && !isOrbitSelected ? flightKey(selectedFlight) : null;
+  const selectedOrbitKey = isOrbitSelected ? `${selectedFlight.icao}-${selectedFlight.orbitStart}` : null;
 
   return (
     <aside className="panel">
-      <input
-        className="search"
-        placeholder="Search callsign or ICAO..."
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-      />
+      <nav className="tabs subtabs">
+        <button className={view === "flights" ? "active" : ""} onClick={() => setView("flights")}>Flights</button>
+        <button className={view === "orbits" ? "active" : ""} onClick={() => setView("orbits")}>Orbits</button>
+      </nav>
+
+      {view === "flights" && (
+        <input
+          className="search"
+          placeholder="Search callsign or ICAO..."
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
+      )}
       <select value={hours} onChange={(e) => onHoursChange(Number(e.target.value))}>
         <option value={6}>Last 6 hours</option>
         <option value={24}>Last 24 hours</option>
@@ -117,30 +143,69 @@ function HistoryPanel({ selectedFlight, onSelect, hours, onHoursChange }) {
       <div className="legend">
         <span><i style={{ background: COLOR_GPS_OK }} />GPS OK</span>
         <span><i style={{ background: COLOR_GPS_BAD }} />GPS degraded (NIC &lt; {LOW_NIC})</span>
+        <span><i style={{ background: COLOR_ORBIT }} />Orbit / holding</span>
       </div>
 
-      <div className="small">{flights.length} flights</div>
+      {view === "flights" && (
+        <>
+          <div className="small">{flights.length} flights</div>
+          <ul className="results">
+            {flights.map((f) => {
+              const key = flightKey(f);
+              const lowPct = Math.round((100 * f.low_nic) / f.positions);
+              return (
+                <li key={key} className={key === selectedFlightKey ? "active" : ""} onClick={() => onSelect(f)}>
+                  <div className="row">
+                    <strong>{f.flight || "-"}</strong>
+                    <span>{f.icao}</span>
+                  </div>
+                  <div className="row small">
+                    <span>{formatTime(f.start)} – {formatTime(f.end)} ({minutesBetween(f.start, f.end)} min)</span>
+                    <span className={lowPct > 0 ? "bad" : ""}>{lowPct}% low NIC</span>
+                  </div>
+                </li>
+              );
+            })}
+            {flights.length === 0 && <li className="empty">No flights found</li>}
+          </ul>
+        </>
+      )}
 
-      <ul className="results">
-        {flights.map((f) => {
-          const key = flightKey(f);
-          const lowPct = Math.round((100 * f.low_nic) / f.positions);
-          const minutes = Math.max(1, Math.round((f.end - f.start) / 60));
-          return (
-            <li key={key} className={key === selectedKey ? "active" : ""} onClick={() => onSelect(f)}>
-              <div className="row">
-                <strong>{f.flight || "-"}</strong>
-                <span>{f.icao}</span>
-              </div>
-              <div className="row small">
-                <span>{formatTime(f.start)} – {formatTime(f.end)} ({minutes} min)</span>
-                <span className={lowPct > 0 ? "bad" : ""}>{lowPct}% low NIC</span>
-              </div>
-            </li>
-          );
-        })}
-        {flights.length === 0 && <li className="empty">No flights found</li>}
-      </ul>
+      {view === "orbits" && (
+        <>
+          <div className="small">{orbits.length} orbits</div>
+          <ul className="results">
+            {orbits.map((o) => {
+              const key = `${o.icao}-${o.start}`;
+              return (
+                <li
+                  key={key}
+                  className={key === selectedOrbitKey ? "active" : ""}
+                  onClick={() =>
+                    onSelect({
+                      icao: o.icao,
+                      start: o.flight_start,
+                      end: o.flight_end,
+                      orbitStart: o.start,
+                      orbitEnd: o.end,
+                    })
+                  }
+                >
+                  <div className="row">
+                    <strong>{o.flight || "-"}</strong>
+                    <span>{o.icao}</span>
+                  </div>
+                  <div className="row small">
+                    <span>{formatTime(o.start)} ({minutesBetween(o.start, o.end)} min)</span>
+                    <span className="orbit">{o.turn_deg}°</span>
+                  </div>
+                </li>
+              );
+            })}
+            {orbits.length === 0 && <li className="empty">No orbits found</li>}
+          </ul>
+        </>
+      )}
     </aside>
   );
 }
@@ -149,7 +214,7 @@ export default function App() {
   const [mode, setMode] = useState("live"); // "live" or "history"
   const [aircraft, setAircraft] = useState([]);
   const [selected, setSelected] = useState(null);             // live: selected aircraft (icao)
-  const [selectedFlight, setSelectedFlight] = useState(null); // history: selected flight
+  const [selectedFlight, setSelectedFlight] = useState(null); // history: selected flight (maybe with an orbit)
   const [track, setTrack] = useState({ key: null, points: [] });
   const [hours, setHours] = useState(24);
 
@@ -209,6 +274,14 @@ export default function App() {
     setSelectedFlight(null);
   }
 
+  // Orbit highlight: the part of the track inside the selected orbit's time window
+  const isOrbit = mode === "history" && selectedFlight?.orbitStart != null;
+  const orbitPoints = isOrbit
+    ? track.points.filter((p) => p.ts >= selectedFlight.orbitStart && p.ts <= selectedFlight.orbitEnd)
+    : [];
+  const fitPoints = isOrbit ? orbitPoints : track.points;
+  const fitKey = track.key && isOrbit ? `${track.key}-orbit-${selectedFlight.orbitStart}` : track.key;
+
   const segments = buildSegments(track.points);
   const lastPoint = track.points.length > 0 ? track.points[track.points.length - 1] : null;
   const militaryCount = aircraft.filter((a) => a.tags?.includes("military")).length;
@@ -248,7 +321,15 @@ export default function App() {
           />
           <ResizeOnChange trigger={mode} />
           {mode === "live" && <MapClickHandler onMapClick={() => setSelected(null)} />}
-          {mode === "history" && <FitToTrack points={track.points} fitKey={track.key} />}
+          {mode === "history" && <FitToTrack points={fitPoints} fitKey={fitKey} />}
+
+          {/* Orbit highlight: a thick purple line drawn first, under the track */}
+          {orbitPoints.length > 1 && (
+            <Polyline
+              positions={orbitPoints.map((p) => [p.lat, p.lon])}
+              pathOptions={{ color: COLOR_ORBIT, weight: 8, opacity: 0.6 }}
+            />
+          )}
 
           {segments.map((s, i) => (
             <Polyline key={i} positions={s.positions} pathOptions={{ color: s.color, weight: 3 }} />

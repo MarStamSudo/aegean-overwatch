@@ -1,4 +1,4 @@
-from analysis import classify, detect_loiters, emergency_reason, split_flights, summarize_flight, turn_angle
+from analysis import classify, detect_loiters, emergency_reason, find_loiter_events, split_flights, summarize_flight, turn_angle
 
 def test_normal_aircraft_has_no_tags():
     aircraft = {"db_flags": 0, "squawk": "1234"}
@@ -135,3 +135,18 @@ def test_slow_turn_outside_window_is_not_loiter():
 def test_missing_track_does_not_crash():
     points = [{"ts": i * 15, "track": None, "lat": 38.0, "lon": 25.0} for i in range(10)]
     assert detect_loiters(points) == []
+
+def test_find_loiter_events_finds_only_the_circling_aircraft():
+    circling = [
+        {"icao": "aaa", "flight": "X1", "ts": i * 15, "track": (i * 30) % 360, "lat": 38.0, "lon": 25.0}
+        for i in range(14)
+    ]
+    straight = [
+        {"icao": "bbb", "flight": "Y1", "ts": i * 15, "track": 90, "lat": 38.0, "lon": 25.0}
+        for i in range(14)
+    ]
+    events = find_loiter_events(circling + straight)
+    assert len(events) == 1
+    assert events[0]["icao"] == "aaa"
+    assert events[0]["flight"] == "X1"
+    assert events[0]["flight_start"] == 0

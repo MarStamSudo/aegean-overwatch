@@ -161,3 +161,12 @@ body {
 .bad {
   color: #ef4444;
 }
+
+/* Flights / Orbits sub-tabs inside the history panel */
+.subtabs button {
+  flex: 1;
+}
+
+.orbit {
+  color: #a855f7;
+}

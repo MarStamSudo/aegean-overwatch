@@ -7,6 +7,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from analysis import classify, emergency_reason, split_flights, summarize_flight
 from ingest.db import DB_PATH
 
+from analysis import classify, emergency_reason, find_loiter_events, split_flights, summarize_flight
+
 app = FastAPI(title="Aegean Overwatch API")
 
 # Allow the React dev server (Vite runs on port 5173) to call this API
@@ -100,3 +102,14 @@ def history_flights(hours: int = 24, q: str = ""):
 
     flights.sort(key=lambda f: (f["low_nic"], f["end"]), reverse=True)
     return flights[:200]
+
+@app.get("/api/history/loiters")
+def history_loiters(hours: int = 24):
+    """Orbits / holding patterns in the last N hours, newest first."""
+    rows = query("""
+        SELECT icao, flight, ts, lat, lon, track
+        FROM positions
+        WHERE ts >= strftime('%s', 'now') - ? * 3600
+        ORDER BY icao, ts
+    """, (hours,))
+    return find_loiter_events(rows)
