@@ -79,7 +79,7 @@ python backend/ingest/test_polygon.py   # verify the polygon (Naxos inside, Izmi
 - [x] SQLite storage, read API (FastAPI) and live map (React + Leaflet)
 - [x] Behavioral anomaly detection — loitering / orbit patterns, emergency squawks (7500/7600/7700), military-registered aircraft
 - [ ] GNSS interference mapping from ADS-B navigation integrity fields (NIC / NACp)
-- [ ] Alerts
+- [x] Alerts
 - [ ] Own ADS-B receiver (RTL-SDR) as an additional data source
 - [ ] Ground-based GNSS monitoring node (ESP32 + LTE/GNSS module)
 
@@ -110,3 +110,15 @@ Code is released under the [MIT License](LICENSE).
 ---
 
 *Built by [STAMX Tech](https://github.com/MarStamSudo).*
+
+
+![Aegean Overwatch map](docs/images/map.png)
+
+![Aegean Overwatch ](docs/images/interface.png)
+
+![Aegean geofence polygon](docs/images/map.png)
+
+Aircraft are kept only if their position falls inside this polygon (`backend/data/aegean.geojson`).
+It covers the Aegean Sea and its islands, including Crete, and excludes the surrounding mainland.
+The polygon is hand-drawn and approximate: it is a technical filter for this project,
+**not** an official airspace, FIR or territorial boundary.
