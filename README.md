@@ -111,9 +111,6 @@ Code is released under the [MIT License](LICENSE).
 
 *Built by [STAMX Tech](https://github.com/MarStamSudo).*
 
-
-![Aegean Overwatch map](docs/images/map.png)
-
 ![Aegean Overwatch ](docs/images/interface.png)
 
 ![Aegean geofence polygon](docs/images/map.png)
