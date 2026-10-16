@@ -1,4 +1,5 @@
 import json
+import sys
 import time
 from pathlib import Path
 
@@ -6,6 +7,10 @@ import httpx
 from shapely.geometry import shape, Point
 
 import db
+
+# Let this script import analysis.py from the backend/ folder (one level up)
+sys.path.insert(0, str(Path(__file__).parent.parent))
+import alerts  # noqa: E402  (must come after the path change)
 
 HEADERS = {"User-Agent": "aegean-overwatch/0.1 (+https://github.com/MarStamSudo/aegean-overwatch)"}
 GEOJSON_PATH = Path(__file__).parent.parent / "data" / "aegean.geojson"
@@ -16,7 +21,7 @@ LAT, LON, RADIUS_NM = 38.3, 25.0, 250
 
 SOURCES = [
     {"name": "adsb.lol",       "enabled": True,  "url": f"https://api.adsb.lol/v2/point/{LAT}/{LON}/{RADIUS_NM}"},
-    {"name": "airplanes.live", "enabled": False, "url": f"https://api.airplanes.live/v2/point/{LAT}/{LON}/{RADIUS_NM}"},  # 403 since Oct 2026, likely feeder-only
+        {"name": "airplanes.live", "enabled": False, "url": f"https://api.airplanes.live/v2/point/{LAT}/{LON}/{RADIUS_NM}"},  # API key for feeders only
     {"name": "adsb.fi",        "enabled": True,  "url": f"https://opendata.adsb.fi/api/v3/lat/{LAT}/lon/{LON}/dist/{RADIUS_NM}"},
 ]
 
@@ -85,18 +90,27 @@ def main():
     aegean = load_polygon(GEOJSON_PATH)
     conn = db.connect()
     db.init_db(conn)
-    print(f"Aegean Overwatch started. {len(SOURCES)} sources, every {POLL_INTERVAL}s. Press Ctrl+C to stop.")
+
+    active = [s for s in SOURCES if s.get("enabled", True)]
+    names = ", ".join(s["name"] for s in active)
+    print(f"Aegean Overwatch started. Sources: {names}. Every {POLL_INTERVAL}s. Press Ctrl+C to stop.")
+
+    # Alerts: remember what we already sent, so we don't repeat it every 15 seconds
+    sent_alerts = {}
+    if alerts.enabled():
+        alerts.send_telegram("✅ Aegean Overwatch collector started")
+        print("Telegram alerts: ON")
+    else:
+        print("Telegram alerts: OFF (no TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID in backend/.env)")
 
     try:
         while True:
             now = time.strftime("%H:%M:%S")
 
-            # 1. Ask every source; one failing source must not stop the others
+            # 1. Ask every active source; one failing source must not stop the others
             results = []
             stats = []
-            for source in SOURCES:
-                if not source["enabled"]:
-                    continue
+            for source in active:
                 try:
                     aircraft_list = fetch_source(source["url"])
                     results.append(aircraft_list)
@@ -109,14 +123,17 @@ def main():
             merged = merge_aircraft(results)
             inside = filter_aegean(merged, aegean)
             written = db.insert_positions(conn, inside, int(time.time()))
-
             print(f"[{now}] {' | '.join(stats)} -> merged: {len(merged)} | Aegean: {len(inside)} | saved: {written}")
+
+            # 3. Alerts for military aircraft and emergency squawks
+            for message in alerts.new_alerts(inside, sent_alerts, int(time.time())):
+                alerts.send_telegram(message)
+
             time.sleep(POLL_INTERVAL)
     except KeyboardInterrupt:
         print("\nStopped by user.")
     finally:
         conn.close()
-
 
 if __name__ == "__main__":
     main()
