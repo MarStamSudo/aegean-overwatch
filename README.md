@@ -78,10 +78,11 @@ python backend/ingest/test_polygon.py   # verify the polygon (Naxos inside, Izmi
 - [x] Multi-source data fusion (adsb.lol, airplanes.live, adsb.fi)
 - [x] SQLite storage, read API (FastAPI) and live map (React + Leaflet)
 - [x] Behavioral anomaly detection — loitering / orbit patterns, emergency squawks (7500/7600/7700), military-registered aircraft
-- [ ] GNSS interference mapping from ADS-B navigation integrity fields (NIC / NACp)
 - [x] Alerts
-- [ ] Own ADS-B receiver (RTL-SDR) as an additional data source
-- [ ] Ground-based GNSS monitoring node (ESP32 + LTE/GNSS module)
+- [ ] GNSS interference mapping from ADS-B navigation integrity fields (NIC / NACp)
+
+
+
 
 ## Limitations
 
