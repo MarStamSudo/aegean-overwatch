@@ -69,6 +69,42 @@ python backend/ingest/fetch.py          # fetch and geofence live aircraft
 python backend/ingest/test_polygon.py   # verify the polygon (Naxos inside, Izmir outside)
 ```
 
+## 🚀 Quick Start
+
+Follow the steps below to run the application locally:
+
+### 1. Environment Setup (Windows / PowerShell)
+
+From the project root (`aegean-overwatch`), activate the virtual environment[cite: 1]:
+
+```powershell
+backend\.venv\Scripts\activate
+```[cite: 1]
+
+> 💡 **Note:** If you encounter a *"running scripts is disabled on this system"* error, run the following command in PowerShell first, then re-run the activate script[cite: 1]:
+> ```powershell
+> Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned
+> ```[cite: 1]
+
+---
+
+### 2. Launching Services
+
+Open **3 separate terminal windows** (e.g., in VS Code) and run the respective commands[cite: 1]:
+
+| # | Service | Execution Directory | Command[cite: 1] |
+| :-: | :--- | :--- | :--- |
+| **1** | **Data Ingestion** | `aegean-overwatch` | `python backend\ingest\fetch.py` |[cite: 1]
+| **2** | **Backend API** | `backend` | `uvicorn api:app --reload` |[cite: 1]
+| **3** | **Frontend (Map)** | `frontend` | `npm run dev` |[cite: 1]
+
+---
+
+🌐 **Access:**
+* **Frontend:** `http://localhost:5173` (or the local URL provided by Vite)
+* **API Documentation (Swagger):** `http://127.0.0.1:8000/docs`
+
+
 ## Roadmap
 
 - [x] Live ADS-B ingestion from a public API
