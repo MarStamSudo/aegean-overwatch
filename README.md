@@ -123,4 +123,5 @@ The polygon is hand-drawn and approximate: it is a technical filter for this pro
 **not** an official airspace, FIR or territorial boundary.
 
 ![Aegean Telegram Bot](docs/images/telegram_bot.jpeg)
+
 Automated Telegram alerts sent in real time whenever target activity is detected inside the geofenced boundary.
